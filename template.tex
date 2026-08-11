@@ -1,0 +1,194 @@
+\documentclass{article}
+
+
+\usepackage{arxiv}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{amsmath}        % for \text in math mode
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{lipsum}
+\usepackage{graphicx}
+\graphicspath{ {./images/} }
+\rhead{ Konstantinidi et al.}
+\renewcommand{\today}{}
+\makeatletter
+\renewcommand{\@toptitlebar}{}
+\renewcommand{\@bottomtitlebar}{\vskip 0.15in}
+\makeatother
+
+\title{Whole-body pseudo-CT synthesis from NAC-PET: our BIC-MAC submission}
+
+\author{%
+  Nikoletta Konstantinidi\textsuperscript{1,2} \quad
+  Nikolaos Dikaios\textsuperscript{1} \\[6pt]
+  \normalsize
+  \textsuperscript{1}Mathematics Research Center, Academy of Athens, Athens 11527, Greece \\
+  \textsuperscript{2}Department of Medicine, National and Kapodistrian University of Athens, Athens 11527, Greece \\[3pt]
+  \normalsize\texttt{nikolettakwnstantinidi@gmail.com} \quad \texttt{ndikaios@academyofathens.gr}
+}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+Attenuation correction (AC) in PET/MRI remains limited due to the lack of information regarding electron density in MRI images. We describe our submission to the BIC-MAC challenge, which synthesises whole-body pseudo-CT images from non-attenuation-corrected (NAC) PET and extends the competition's baseline in three directions: (i) for each patient, a pre-registration step was performed to adjust the position of the head/neck bed (\texttt{chunk\_0}), correcting a systematic misalignment between the MRI and PET/CT geometries, 
+(ii) a four-channel 3D Attention U-Net with residual blocks and a FiLM- style conditioning based on patient demographic data, and 
+(iii) a loss function computed directly in the space of the linear attenuation coefficient (\textmu), aligning the training loss with the competition's evaluation metric.
+The final model, trained at full scale on a cloud GPU, achieves a whole-body \textmu-MAE of 0.0082 cm$^{-1}$ on eight held-out validation subjects. 
+\end{abstract}
+
+
+\keywords{Pseudo-CT synthesis \and PET/MRI attenuation correction \and
+Attention U-Net \and MRI-to-PET registration}
+
+
+\section{Introduction}
+
+In PET/MRI, the main quantitative challenge is the MRI-based attenuation correction, since the MRI signal intensity is not directly related to photon attenuation \cite{hofmann2009towards}. High-attenuation tissues, such as bones, often appear as signal voids on MRI due to low proton density and short T2 relaxation times \cite{hofmann2009towards}. 
+Deep learning pseudo-CT synthesis has become the dominant approach for MRI-based attenuation correction \cite{dayarathna2024deep}, requiring the network to learn physically meaningful representations of the tissues, including attenuation coefficients (\textmu) and their relation to the underlying electron density, especially for high attenuation tissues such as bones\cite{ahangari2022deep}. 
+
+The challenge provides pairs of whole-body NAC-PET, Dixon MRI, and topogram data along with a baseline 3D U-Net model \cite{ronneberger2015u}. We address three key limitations: First, we observed a systematic head/neck misalignment (\texttt{chunk\_0}) between MRI and PET. 
+Second, we noticed that the baseline model has four informative inputs that were not included: the Dixon MRI (in-phase and out-of-phase), the CT topogram, and the patient's demographic metadata.
+Third, we realised that the baseline model minimizes an L1 loss in the normalised CT space, while the evaluation is performed on the generated \textmu-map. 
+
+
+\section{Data and pre-processing}
+\label{sec:headings}
+
+A total of 75 subjects were provided. We used a subject-level split of 67 training subjects and 8 validation subjects held out, which were selected through random sampling with a fixed random seed. However, because the seed is fixed, the division is deterministic and identical in every training cycle, and is therefore fully reproducible. 
+Validation is performed on whole volumes rather than on cropped patches, as well as on multiple subjects who have been excluded from the test rather than just one or two. Each case includes NAC-PET, Dixon MRI (in-phase and out-of-phase), CT topogram, reference CT, body and organ masks, as well as basic patient metadata (age, sex, height, weight).
+
+\paragraph{Intensity normalisation.}
+Each modality is normalised per channel. NAC-PET is normalised by dividing the standard deviation without subtracting the mean, so that the background remains zero and the values do not become negative.
+The two Dixon-MRI volumes and the CT topogram are normalised using the z-score (subtraction of the mean and division by the standard deviation).
+The CT scan is scaled from [-1000, 2000] HU to [0, 1]. The predictions are remapped to HU with $HU = 3000 \cdot \hat{y} - 1000$.
+The same normalization is used during training, evaluation, and prediction, so that the network sees the same input distribution in all three phases.
+
+\paragraph{Metadata.}
+BMI was calculated based on height and weight and added to the demographic data, resulting in a total of five features (age, sex, height, weight, BMI). 
+All features were scaled to the range [0, 1] using fixed thresholds based on the cohort. These features are used to pretrain the network via  Feature-wise Linear Modulation (FiLM) \cite{perez2018film} at the bottleneck.
+
+\paragraph{Augmentation.}
+The augmentation during training includes random flips, 90° rotations, and Gaussian noise applied only to the NAC-PET to simulate counting noise. The topogram is extended to 3D so that it undergoes the same transformations. The patches are sampled using a foreground-weighted strategy (3:1) based on the prediction mask.
+
+\subsection{Subject-wise pre-registration of head/neck bed misalignment}
+
+A visual inspection of the training data in LIFEx \cite{nioche2018lifex} and 3D Slicer \cite{fedorov20123d} revealed that bed positions 1-3 are already well aligned with the PET/CT scanner, whereas bed 0 (head/neck) shows a significant misalignment due to movement of the patient's head between the MRI and PET/CT acquisitions. 
+The misalignment is mainly due to a tilt of the head in the sagittal plane. That is a forward or backward tilt (pitch) around the left–right axis. This is expected, as the head may shift on the bed between scans, while the rest of the body remains relatively stable.
+Therefore, we applied a correction to the \texttt{chunk\_0} position to ensure consistent anatomical correspondence between the diagnostic modalities.
+Since the reference CT, the prediction mask, and the organ masks are all defined in the PET/CT space, the correction must map the MRI volumes to the PET space. 
+Corrections were applied for 65 of the 75 subjects, while the remaining cases were already well-aligned. 
+
+A head mask was obtained from the NAC-PET volume by applying a threshold to the upper body along the vertical axis, isolating the region where the misalignment occurs (head/neck). An initial intensity-independent pitch angle was calculated from the anatomical geometry by projecting the head mask onto the sagittal plane and fitting a linear model to estimate its orientation.
+This estimation was refined by a coarse-to-fine angular search that maximizes the Mattes Mutual Information (MI) \cite{maes2003medical} between the MRI chunk and the PET image. 
+The MI search is evaluated on a cropped region of interest around the head. The selected transformation consisted of a rotation around the left-right axis, centered at the head's center of mass, followed by a fixed translation along the superior–inferior axis. This transformation is applied to the full-resolution volumes and resampled in the PET coordinate space using SimpleITK \cite{lowekamp2013design}. 
+The corrected MRI chunks were stitched together into a single volume using regions that did not overlap in the axial direction, ensuring spatial consistency with the PET/CT reference space. The data loader uses either the corrected or the original MRI for each subject during both training and inference.
+
+
+
+\section{Method}
+%\label{sec:others}
+
+
+\paragraph{Architecture.}
+We use a 3D Attention U-Net model with four input channels (NAC-PET, Dixon in-phase, Dixon out-of-phase, CT-topogram) and a single output channel. Each encoder and decoder stage consists of residual blocks with instance normalization and LeakyReLU activations.
+Attention gates \cite{schlemper2019attention} are applied to all four skip connections, allowing the decoder to suppress irrelevant features from the encoder, which is important when large regions correspond to the background.
+
+\paragraph{Metadata conditioning.}
+We process the five demographic features through a small Multilayer Perceptron (MLP) to generate channel-wise ($\gamma$) scaling and shifting ($\beta$) parameters, which are applied to the bottleneck feature map using FiLM \cite{perez2018film} ($F' = \gamma \odot F + \beta$).
+Conditioning is applied at the bottleneck where the FOV is larger and patient-level information is most important, such as expected tissue or bone density.
+The mechanism is activated both during the inference process and during training.
+
+\paragraph{Attenuation-aware loss.}
+The challenge metric is the \textmu-MAE at 511 keV, computed from HU values using a bilinear mapping (Carney et al. \cite{carney2006method}). To align with this, we converted both predictions and targets from normalised CT to HU, and then to \textmu, using a differentiable piecewise-linear mapping. The loss is then computed directly in \textmu-space within the prediction mask:
+$L = L_{1,\mu}(\hat{y}, y; w) + \lambda_{\text{grad}} \cdot L_{\text{grad},\mu}(\hat{y}, y)$.
+
+Voxels corresponding to bone (HU > 150) are given a higher weighting factor (5), while the remaining voxels within the mask have a weighting factor of 1, and voxels outside the mask are ignored. 
+This choice is motivated by a strong class imbalance relative to soft tissue.
+Across the 75 subjects, bone accounts for only 5.9\% $\pm$ 0.96\% of the whole-body mask (range 3.1-8.2\%), so without weighting, the loss would be dominated by soft-tissue voxels.
+Full balancing would correspond to a weighting factor of approximately ${1/}{0.059}\approx 17$. 
+We purposely adopted a more conservative value of 5, which significantly increases the bone contribution while avoiding an excessive emphasis that compromises the accuracy of the soft tissue.
+
+In addition, $\lambda_{\text{grad}}=0.1$ in the formula is a gradient term in \textmu-space, and helps maintain sharp boundaries between bone and soft tissue.
+During validation, we report the standard \textmu-MAE within the mask, using the same conversion, ensuring consistency with the challenge metric.
+
+\section{Implementation and training}
+
+The model was implemented in PyTorch using MONAI 1.5.2, and SimpleITK for the registration transforms. 
+Development followed two practical phases shaped by hardware constraints. The design and the optimization study were first explored on a CPU-only laptop, to check whether each modification led to an improvement. 
+Due to memory and runtime limitations, training was restricted to $96\times96\times128$ patches, batch size~1, and a maximum of 15 epochs. In this setting, a single training run required ~33 hours, while whole-body inference took more than two hours per subject. As a result, each ablation was evaluated on a single held-out subject and should be interpreted as indicative rather than definitive (Table~\ref{tab:ablation}).
+
+The final model was then trained at full scale on a rented cloud GPU, which made the proposed development possible: foreground-biased random patches of size 192 × 192 × 192, AdamW $(\text{learning rate } 3 \times 10^{-4},\ \text{weight decay } 1 \times 10^{-5})$, and 250 epochs, with 8 data-loading workers. Whole-body \textmu-MAE is computed over the 8 held-out validation subjects, is evaluated every 10 epochs, and the best-performing checkpoint is selected.
+
+We define one epoch as a single pass over all 67 training subjects, which involves sampling two random foreground-biased patches per subject rather than completely covering each volume. 
+Since the positions of the patches are resampled independently in every epoch and the sampling is guided towards the body region using the prediction mask, over the epochs the network is exposed to a wide range of anatomical regions across every subject. No region is systematically excluded. 
+Training on a CPU-only laptop is patch-based due to memory constraints, whereas validation reconstructs the full volume by sliding-window inference ($96\times96\times128$ window, 0.50 overlap, Gaussian blending). 
+
+
+\section{Results}
+
+\begin{table}[h!]
+  \caption{Ablation of model components, evaluated on a single held-out subject
+  (CPU development, 15 epochs). Each row adds one component.}
+  \centering
+  \begin{tabular}{lc}
+    \toprule
+    Configuration & $\mu$-MAE (cm$^{-1}$) \\
+    \midrule
+    Baseline U-Net (PET only)                     & -- \\
+    + Dixon MRI (3 channels)                       & 0.02899 \\
+    + Attention gates                              & 0.01571 \\
+    + \texttt{chunk\_0} pre-registration           & 0.01364 \\
+    + Topogram (4 channels)                        & 0.01351 \\
+    + FiLM metadata conditioning                   & 0.01126 \\
+    + $\mu$-space bone-weighted loss (full model)  & 0.00908 \\
+    \bottomrule
+  \end{tabular}
+  \label{tab:ablation}
+\end{table}
+
+
+\begin{table}[h!]
+  \caption{Whole-body $\mu$-MAE of the full model under different training scales
+  and evaluation sets.}
+  \centering
+  \begin{tabular}{llc}
+    \toprule
+    Training & Evaluation set & $\mu$-MAE (cm$^{-1}$) \\
+    \midrule
+    CPU (15 epochs, $96^3$)    & 8 held-out subjects                 & 0.0177 \\
+    GPU (250 epochs, $192^3$)  & 8 held-out subjects                 & 0.008283 \\
+    GPU (250 epochs, $192^3$)  & 4 challenge subjects (dry run)      & \textbf{0.006854} \\
+    \bottomrule
+  \end{tabular}
+  \label{tab:final}
+\end{table}
+
+
+Each component reduces the $\mu$-MAE (Table~\ref{tab:ablation}), with the greatest improvement coming from the attention gates. Full-scale GPU training (250~epochs, $192^3$) achieved a whole-body $\mu$-MAE of 0.008283~cm$^{-1}$ on our eight held-out
+subjects, while the organizers' dry run reported 0.006854~cm$^{-1}$ on the four official subjects (Table~\ref{tab:final}).
+
+\section{Limitations and discussion}
+
+The main limitation of this work is the lack of computational resources. All development was performed on a CPU-only laptop, which limited the training length and the extent of the ablation.
+A further limitation is that the pre-registration step for \texttt{chunk\_0} relies on a rigid transformation. The head and neck have inherently non-rigid movements such as swallowing and breathing, and in combination with the complex anatomy of this region, are not adequately described by a rigid model\cite{monti2017evaluation}.
+
+Among the proposed components, the largest improvement is achieved from attention gates. This confirms the idea that suppressing irrelevant environmental artifacts is particularly important, where most of the FOV consists of air. 
+The pre-registration step for \texttt{chunk\_0}, the FiLM metadata conditioning, and the \textmu-space bone-weighted loss contributed almost equally. 
+Residual errors continue to be concentrated in areas with high anatomical variability and strong bone-air contrast, such as the lungs or the intestine, where the MRI signal provides the least information regarding attenuation \cite{dayarathna2024deep}. 
+These are precisely the areas where pseudo-CT reconstruction is inherently more difficult, as the correlation between MRI intensity and electron density is less clear in these regions.
+
+
+
+\bibliographystyle{unsrt}  
+\bibliography{references}
+
+
+
+
+\end{document}
