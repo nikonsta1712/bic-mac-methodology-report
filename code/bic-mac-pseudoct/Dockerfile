@@ -1,5 +1,5 @@
-# Built on the official BIC-MAC baseline image, which already provides a
-# working torch + MONAI + CUDA stack. No network access is needed at inference.
+# Built on the official BIC-MAC baseline image. No network access is needed at inference.
+
 FROM ghcr.io/bic-mac-challenge/baseline:latest
 
 # Extra dependency for the MRI -> PET registration step.
