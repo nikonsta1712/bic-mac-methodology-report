@@ -23,9 +23,9 @@ import numpy as np
 import SimpleITK as sitk
 
 
-# ------------------------------------------------------------------
+
 # Constants (identical across all subjects)
-# ------------------------------------------------------------------
+
 SHIFTS = {
     1: (0.0, -15.0, -15.0),
     2: (0.0, -15.0, -10.0),
@@ -42,17 +42,17 @@ PITCH_COARSE_STEP  = 2.5
 PITCH_FINE_HALF    = 2.5
 PITCH_FINE_STEP    = 0.25
 
-# ROI margin (fraction of the head-mask extent per axis) added around the head
-# before the MI sweep, so the head stays inside the crop after rotation.
+# ROI margin (fraction of the head-mask extent per axis) added around the head before the MI sweep, so the head stays inside the crop after rotation
+
 ROI_MARGIN_FRAC = 0.5
 
 OUT_SUBDIR   = "new_registration_output_final"
 OUT_TEMPLATE = "mri_{phase}_final.nii.gz"
 
 
-# ------------------------------------------------------------------
+
 # Pitch estimation (2D geometry)
-# ------------------------------------------------------------------
+
 def estimate_pitch_2d(head_mask_arr):
     pts = np.argwhere(head_mask_arr > 0)
     if len(pts) < 100:
@@ -66,9 +66,9 @@ def estimate_pitch_2d(head_mask_arr):
     return angle_deg
 
 
-# ------------------------------------------------------------------
+
 # Transform + MI
-# ------------------------------------------------------------------
+
 def _make_transform(pet_sitk, head_mask_arr, rot_x_deg, trans_y_mm=0.0, trans_z_mm=0.0):
     head_vox = np.argwhere(head_mask_arr > 0)
     com_vox = head_vox.mean(axis=0)
@@ -77,8 +77,9 @@ def _make_transform(pet_sitk, head_mask_arr, rot_x_deg, trans_y_mm=0.0, trans_z_
     )
     tx = sitk.Euler3DTransform()
     tx.SetCenter(com_phys)
-    # Resample applies the INVERSE transform (output->input): to rotate the
-    # content by +rot_x_deg we set the transform rotation to -rot_x_deg.
+ 
+    # Resample applies the INVERSE transform (output->input): to rotate the content by +rot_x_deg we set the transform rotation to -rot_x_deg
+ 
     tx.SetRotation(float(np.deg2rad(-rot_x_deg)), 0.0, 0.0)
     tx.SetTranslation((0.0, float(trans_y_mm), float(trans_z_mm)))
     return tx
@@ -94,10 +95,10 @@ def compute_mi(fixed_sitk, moving_sitk):
     return reg.MetricEvaluate(fixed_sitk, moving_sitk)
 
 
-# ------------------------------------------------------------------
+
 # Head ROI cropping (physical space preserved)
 # numpy array axes are (z, y, x); sitk index axes are (x, y, z).
-# ------------------------------------------------------------------
+
 def _head_bbox(head_mask_arr, margin_frac=ROI_MARGIN_FRAC):
     pts = np.argwhere(head_mask_arr > 0)
     (zmin, ymin, xmin) = pts.min(axis=0)
@@ -164,9 +165,9 @@ def find_best_pitch_angle(original_arr, pet_sitk, pet_arr, head_mask_arr, init_a
     return best_angle
 
 
-# ------------------------------------------------------------------
-# Helpers (stitching)
-# ------------------------------------------------------------------
+
+# stitching
+
 def compute_chunks_z(chunks_arr):
     chunks_z = {}
     for i, arr in chunks_arr.items():
@@ -249,9 +250,9 @@ def _stitch_phase(features_dir, phase, pet, pet_arr, best_angle, head_mask_arr):
     return out
 
 
-# ------------------------------------------------------------------
+
 # Public entry point
-# ------------------------------------------------------------------
+
 def register_subject(features_dir, out_dir=None):
     t0 = time.time()
     pet = sitk.ReadImage(os.path.join(features_dir, "nacpet.nii.gz"), sitk.sitkFloat32)
