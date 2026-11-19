@@ -8,11 +8,10 @@ Docker image: `nikonsta/bic-mac:latest`
    The per-bed Dixon MRI chunks are stitched and rigidly corrected into PET space.
    - Head mask from the NAC-PET (no dependency on `prediction_mask` at inference)
    - Head pitch: initial estimate from a 2D geometric fit, then a coarse-to-fine
-     search (−20° to 35°, 2.5° → 0.25°) that minimizes the Mattes mutual-information
+     search that minimizes the Mattes mutual-information
      metric between PET and MRI on a cropped head ROI (`sitk.Euler3DTransform`)
    - Pitch is estimated once on in-phase and reused for out-phase
    - Fixed per-bed translations and exclusive-zone stitching (identical for all subjects)
-   - Runtime: about 4 min/subject on CPU
 
 2. **Network** (`model.py`): 3D U-Net with residual blocks and attention gates
    (16–256 feature channels, 5.8M parameters).
@@ -22,7 +21,7 @@ Docker image: `nikonsta/bic-mac:latest`
      applied at the bottleneck (FiLM-style, scale only)
 
 3. **Loss** (`train.py`): computed in linear-attenuation (µ) space at 511 keV using
-   the bilinear HU → µ mapping of Carney et al. (2006)
+   the bilinear HU -> µ mapping 
    - Bone-weighted masked L1 on µ (bone = GT > 150 HU, weight 5; zero outside
      `prediction_mask`)
    - plus 0.1 × spatial-gradient L1 on µ
@@ -53,9 +52,8 @@ best_model.pth    # trained weights
 Dockerfile        # challenge submission container
 ```
 
-## Inference
 
-### Docker (as submitted)
+### Docker 
 
 ```bash
 docker build -t bic-mac .
