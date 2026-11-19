@@ -1,10 +1,5 @@
 # BIC-MAC 2026 — Pseudo-CT synthesis from PET/MRI
 
-Inference and training code for our submission to the
-[BIC-MAC challenge](https://github.com/bic-mac-challenge) (MICCAI 2026):
-whole-body pseudo-CT synthesis from non-attenuation-corrected PET, Dixon MRI and
-the CT topogram, for PET attenuation correction.
-
 Docker image: `nikonsta/bic-mac:latest`
 
 ## Method overview
@@ -108,10 +103,3 @@ checkpoint is kept). Augmentation: random flips, random 90° axial rotations,
 Gaussian noise on the NAC-PET. Trained on a single cloud GPU. Training can be
 resumed from `outputs/checkpoints/last_state.pth`.
 
-## Citation
-
-If you use this code, please cite the BIC-MAC challenge paper (in preparation).
-
-## License
-
-MIT. See `LICENSE`.
