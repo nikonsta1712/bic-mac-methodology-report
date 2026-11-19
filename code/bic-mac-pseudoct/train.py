@@ -24,9 +24,9 @@ from transforms import get_cache_transforms, get_random_transforms, BroadcastTop
 from model import build_model
 
 
-# ------------------------------------------------------------------
+
 # Normalization / mu-space constants
-# ------------------------------------------------------------------
+
 HU_MIN = -1000.0
 HU_RANGE = 3000.0          # 2000 - (-1000)
 
@@ -40,9 +40,9 @@ def load_config():
         return yaml.safe_load(f)
 
 
-# ------------------------------------------------------------------
+
 # HU -> mu (linear attenuation coefficient @ 511 keV), differentiable
-# ------------------------------------------------------------------
+
 def hu_to_mu_torch(hu):
     """
     Bilinear HU -> mu (Carney et al. 2006, Med Phys 33:976-983) @ 511 keV.
@@ -138,11 +138,11 @@ def extract_metadata(batch, device):
     return meta
 
 
-# ------------------------------------------------------------------
+
 # Whole-body validation transform
 #   Same normalization as get_transforms (z-score),
 #   Without augmentations, without crop -> whole volume.
-# ------------------------------------------------------------------
+
 def get_fullbody_val_transforms():
     return Compose([
         LoadImaged(keys=["nacpet", "mri_combined_in_phase", "mri_combined_out_phase",
@@ -172,9 +172,9 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    # ----------------------------------------------------------
+  
     # 1. Data preparation  ->  8 held-out val subjects, unbiased split
-    # ----------------------------------------------------------
+
     all_data = get_dataset(cfg["data_dir"])          # 75 subjects (sorted)
 
     split_seed = cfg.get("split_seed", 42)
@@ -194,10 +194,9 @@ def main():
     val_ids = [_sid(s) for s in val_data]
     print("Validation subjects:", val_ids)
 
-    # ----------------------------------------------------------
-    # Datasets: cache the deterministic preprocessing (load + normalize)
-    # in RAM, apply random augmentation + crop fresh every epoch.
-    # ----------------------------------------------------------
+
+    # Datasets: cache the deterministic preprocessing (load + normalize) in RAM, apply random augmentation + crop fresh every epoch.
+  
     num_workers = cfg.get("num_workers", 8)
 
     cache_transforms = get_cache_transforms()
@@ -233,9 +232,9 @@ def main():
         num_workers=num_workers,
     )
 
-    # ----------------------------------------------------------
+ 
     # 2. Model, optimizer
-    # ----------------------------------------------------------
+    
     model = build_model().to(device)                 # 4 input channels
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
@@ -248,9 +247,9 @@ def main():
     out = cfg.get("output_dir", "outputs")
     os.makedirs(f"{out}/checkpoints", exist_ok=True)
 
-    # ----------------------------------------------------------
+
     # 3. Validation settings (whole-body, every N epochs)
-    # ----------------------------------------------------------
+
     epochs = cfg.get("epochs", 3)
     VAL_EVERY = cfg.get("val_every", 1)
     VAL_ROI = tuple(cfg.get("val_roi", (192, 192, 192)))       # same ROI as predict.py
