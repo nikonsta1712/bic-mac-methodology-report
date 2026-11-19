@@ -1,0 +1,14 @@
+data_dir: /workspace/data/train
+
+num_workers: 8
+output_dir: outputs
+
+epochs: 250
+learning_rate: 0.0003
+
+#batch_size: 1
+patch_size: [192,192,192] 
+train_num_samples: 2 #Number of patches to sample per train subject
+val_num_samples: 8 #Number of patches to sample per val subject
+val_every: 10
+
